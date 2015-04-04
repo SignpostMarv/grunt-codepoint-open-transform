@@ -43,6 +43,24 @@ Default value: `1`
 
 Indicates which row of headers to use (object keys in JSON files)
 
+#### options.latlng
+Type: `Boolean`
+Default value `false`
+
+Include Latitude & Longitude conversions in output.
+
+#### options.minimal
+Type: `Boolean`
+Default value: `false`
+
+Include only minimal data in output.
+
+#### options.whitespace
+Type: `Boolean`
+Default value: `true`
+
+Include whitespace in output to assist when reading the output files directly.
+
 ### Output Formats
 File format is determined by the destination file suffix.
 
