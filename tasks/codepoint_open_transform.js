@@ -14,6 +14,8 @@ module.exports = function(grunt){
         'Transforms the Ordnance Survey "Code-Point Open" data.',
         function(){
             var
+                chunk = 1024|0,
+                done = this.async(),
                 options = this.options({
                     minimal: false,
                     headers: 1,
@@ -58,6 +60,7 @@ module.exports = function(grunt){
                     })[0],
                     generate_json_ooa = false,
                     generate_json_aoo = false,
+                    generate_sql_sqlite = false,
                     last
                 ;
                 if(/\.ooa\.json$/.test(f.dest) || /^ooa\.json$/.test(f.dest)){
@@ -67,9 +70,12 @@ module.exports = function(grunt){
                     /^aoo\.json$/.test(f.dest)
                 ){
                     generate_json_aoo = true;
+                }else if(/\.sqlite$/.test(f.dest)){
+                    generate_sql_sqlite = true;
                 }
 
                 if(
+                    generate_sql_sqlite === false &&
                     generate_json_ooa === false &&
                     generate_json_aoo === false
                 ){
@@ -143,7 +149,11 @@ module.exports = function(grunt){
                     }
                 }
 
-                if(generate_json_ooa || generate_json_aoo){
+                if(
+                    generate_sql_sqlite ||
+                    generate_json_ooa ||
+                    generate_json_aoo
+                ){
                     var
                         ooa = {},
                         aoo = [],
@@ -186,12 +196,20 @@ module.exports = function(grunt){
                             headers.forEach(loop);
                         }
                     ;
-                    if(generate_json_ooa){
+                    if(
+                        generate_json_ooa ||
+                        generate_sql_sqlite
+                    ){
                         headers[src][options.headers].forEach(function(header){
                             if(header !== false){
                                 ooa[header] = [];
                             }
                         });
+                    }
+                    if(
+                        generate_sql_sqlite ||
+                        generate_json_ooa
+                    ){
                         if(options.latlng){
                             var
                                 orig_do_ooaAppendRecord = do_ooaAppendRecord
@@ -276,7 +294,10 @@ module.exports = function(grunt){
                         var
                             record = []
                         ;
-                        if(generate_json_ooa){
+                        if(
+                            generate_sql_sqlite ||
+                            generate_json_ooa
+                        ){
                             while(record = csvParser.read()){
                                 do_ooaAppendRecord(record);
                             }
@@ -357,6 +378,7 @@ module.exports = function(grunt){
                         ooaKeys.push(last);
                         write_ooaKey(last, -1);
                         fs.appendFileSync(f.dest, '}');
+                        done();
                     }else if(generate_json_aoo){
                         grunt.log.writeln(aoo.length + ' entries to write');
                         if(options.whitespace){
@@ -366,7 +388,6 @@ module.exports = function(grunt){
                         }
                         var
                             i = 0|0,
-                            chunk = 1024|0,
                             j = aoo.length - (aoo.length % chunk)
                         ;
                         for(i=0;i<aoo.length;i+=chunk){
@@ -389,6 +410,226 @@ module.exports = function(grunt){
                             }
                         }
                         fs.appendFileSync(f.dest, ']');
+                        done();
+                    }else if(generate_sql_sqlite){
+                        grunt.log.writeln("Setting up SQLITE for " + f.dest);
+                        fs.writeFileSync(f.dest, '');
+                        // assumes minimal mode, i.e. won't include all cols
+                        var
+                            sql = module.require('sql'),
+                            SQLiteDialect = module.require(
+                                'sql/lib/dialect/sqlite'
+                            ),
+                            sqlite = new SQLiteDialect(),
+                            db,
+                            makeDb = function(){
+                                db = (
+                                    new (
+                                        module.require('sqlite3').verbose()
+                                    ).Database(f.dest)
+                                );
+                            },
+                            schema = {
+                                'name': 'postcodes',
+                                columns: [
+                                    {
+                                        name: "postcode",
+                                        dataType: "varchar",
+                                        primaryKey: true
+                                    },
+                                    {
+                                        name: "pq",
+                                        dataType: "float",
+                                    },
+                                    {
+                                        name: "eastings",
+                                        dataType: "int"
+                                    },
+                                    {
+                                        name: "northings",
+                                        dataType: "int"
+                                    }
+                                ]
+                            },
+                            insertSpec = {
+                                postcode: function(idx){
+                                    return (
+                                        ooa[
+                                            headers[src][
+                                                options.headers
+                                            ][0]
+                                        ][
+                                            idx
+                                        ].toLowerCase().replace(/\s+/g, '')
+                                    );
+                                },
+                                pq: function(idx){
+                                    return (
+                                        ooa[headers[src][
+                                            options.headers][1]
+                                        ][idx]
+                                    );
+                                },
+                                eastings: function(idx){
+                                    return (
+                                        ooa[headers[src][
+                                            options.headers][2]
+                                        ][idx]
+                                    );
+                                },
+                                northings: function(idx){
+                                    return (
+                                        ooa[headers[src][
+                                            options.headers][3]
+                                        ][idx]
+                                    );
+                                }
+                            },
+                            destTable,
+                            insertSql,
+                            insertRow = {},
+                            total = (
+                                ooa[
+                                    headers[src][options.headers][0]
+                                ].length
+                            ),
+                            queued = 0|0,
+                            stmtInsertLastLength = 0|0,
+                            stmtInsertChunk = [],
+                            stmtParams = [],
+                            make_sqliteFlattener = function(j){
+                                return function(col){
+                                    return insertSpec[col][j];
+                                };
+                            },
+                            stmt
+                        ;
+                        chunk = 128;
+                        if(options.latlng){
+                            schema = {
+                                'name': 'postcodes',
+                                'columns': [
+                                    {
+                                        name: "postcode",
+                                        dataType: "varchar",
+                                        primaryKey: true
+                                    },
+                                    {
+                                        name: "pq",
+                                        dataType: "float",
+                                    },
+                                    {
+                                        name: "latitude",
+                                        dataType: "float"
+                                    },
+                                    {
+                                        name: "longitude",
+                                        dataType: "float"
+                                    }
+                                ]
+                            };
+                            insertSpec = {
+                                postcode: insertSpec.postcode,
+                                pq: insertSpec.pq
+                            };
+                            if(options.minimal){
+                                insertSpec.latitude = function(idx){
+                                    return (
+                                        ooa['LAT'][idx]
+                                    );
+                                };
+                                insertSpec.longitude = function(idx){
+                                    return (
+                                        ooa['LNG'][idx]
+                                    );
+                                };
+                            }else{
+                                insertSpec.latitude = function(idx){
+                                    return (
+                                        ooa['Latitude'][idx]
+                                    );
+                                };
+                                insertSpec.longitude = function(idx){
+                                    return (
+                                        ooa['Longitude'][idx]
+                                    );
+                                };
+                            }
+                        }
+                        destTable = sql.define(schema);
+                        Object.keys(insertSpec).forEach(
+                            function(col){
+                                insertRow[col] =
+                                    insertSpec[col](0)
+                                ;
+                            }
+                        );
+
+                        makeDb();
+
+                        db.serialize(function(){
+                            grunt.log.writeln('Creating table on ' + f.dest);
+                            db.run(destTable.create().toQuery().text);
+                        });
+
+                        db.close(function(){
+                            makeDb();
+                            stmt = db.prepare(sqlite.getQuery(
+                                destTable.insert(insertRow)
+                            ).text);
+                            db.parallelize(function(){
+                                grunt.log.writeln(
+                                    'Inserting rows on ' +
+                                    f.dest
+                                );
+                                for(i=0;i<total;i+=chunk){
+                                    if(i % (chunk * 128) === 0){
+                                        grunt.log.writeln(
+                                            (
+                                                Math.floor(
+                                                    ((i + 1) / total) * 10000
+                                                ) / 100
+                                            ) + '%'
+                                        );
+                                    }
+                                    stmtInsertChunk = [];
+                                    for(j=i;j<Math.min(total, i + chunk);++j){
+                                        stmtParams.concat(
+                                            Object.keys(insertSpec).map(
+                                                make_sqliteFlattener(j)
+                                            )
+                                        );
+                                        stmtInsertChunk.push(insertRow);
+                                    }
+                                    stmt = db.prepare(sqlite.getQuery(
+                                        destTable.insert(stmtInsertChunk)
+                                    ).text);
+                                    stmtInsertLastLength =
+                                        stmtInsertChunk.length
+                                    ;
+                                    stmt.run.apply(stmt, stmtParams);
+                                }
+                            });
+
+                            grunt.log.writeln('Awaiting closure of ' + f.dest);
+
+                            db.close(function(){
+                                makeDb();
+                                db.get(
+                                    'SELECT COUNT(*) FROM postcodes',
+                                    function(err, row){
+                                        grunt.log.writeln(
+                                            row['COUNT(*)'] +
+                                            ' rows written to ' +
+                                            f.dest
+                                        );
+                                    }
+                                );
+                                db.close(function(){
+                                    done();
+                                });
+                            });
+                        });
                     }
                 }
             });
