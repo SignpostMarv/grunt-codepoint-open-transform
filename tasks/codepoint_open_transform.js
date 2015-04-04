@@ -15,6 +15,7 @@ module.exports = function(grunt){
         function(){
             var
                 options = this.options({
+                    minimal: false,
                     headers: 1,
                     latlng: false,
                     whitespace: true
@@ -120,6 +121,26 @@ module.exports = function(grunt){
                         );
                         return false;
                     }
+                    if(options.minimal){
+                        headers[src][0].forEach(function(e, i){
+                            if(
+                                (
+                                    options.latlng ? [
+                                        0,
+                                        1
+                                    ] : [
+                                        0,
+                                        1,
+                                        2,
+                                        3
+                                    ]
+                                ).indexOf(i) === -1
+                            ){
+                                headers[src][0][i] = false;
+                                headers[src][1][i] = false;
+                            }
+                        });
+                    }
                 }
 
                 if(generate_json_ooa || generate_json_aoo){
@@ -132,9 +153,15 @@ module.exports = function(grunt){
                                     if(i === 1 || i === 2 || i === 3){
                                         e = parseFloat(e);
                                     }
+                                    if(
+                                        headers[src][
+                                            options.headers
+                                        ][i] !== false
+                                    ){
                                     ooa[
                                         headers[src][options.headers][i]
                                     ].push(e);
+                                    }
                                 }
                             ;
                             record.forEach(ooaAppendRecord);
@@ -146,6 +173,9 @@ module.exports = function(grunt){
                         ){
                             var
                                 loop = function(e, i){
+                                    if(e === false){
+                                        return;
+                                    }
                                     if(i === 1 || i === 2 || i === 3){
                                         rowObj[e] = parseFloat(record[i]);
                                     }else{
@@ -158,7 +188,9 @@ module.exports = function(grunt){
                     ;
                     if(generate_json_ooa){
                         headers[src][options.headers].forEach(function(header){
+                            if(header !== false){
                             ooa[header] = [];
+                            }
                         });
                         if(options.latlng){
                             var
