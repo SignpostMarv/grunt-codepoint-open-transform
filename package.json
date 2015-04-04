@@ -38,7 +38,7 @@
   ],
   "dependencies": {
     "csv-parse": "^0.1.0",
-    "jsonfile": "^2.0.0",
+    "geodesy": "^1.0.1",
     "zipfile": "^0.5.7"
   }
 }

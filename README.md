@@ -64,7 +64,9 @@ Destinations ending in *ooa.json* will output JSON along the following form:
 ```
 
 #### JSON, Array of Objects
-**Presently this output method will run into memory constraints.**
+**Presently this output method will generate a file that appears valid,**
+** however, the output file will likely trigger memory constraints**
+** due to the 1.47 million objects in the array.**
 Destinations ending in *aoo.json* will output JSON along the following form:
 ```json
 [
