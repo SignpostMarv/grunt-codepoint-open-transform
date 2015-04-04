@@ -158,9 +158,9 @@ module.exports = function(grunt){
                                             options.headers
                                         ][i] !== false
                                     ){
-                                    ooa[
-                                        headers[src][options.headers][i]
-                                    ].push(e);
+                                        ooa[
+                                            headers[src][options.headers][i]
+                                        ].push(e);
                                     }
                                 }
                             ;
@@ -189,7 +189,7 @@ module.exports = function(grunt){
                     if(generate_json_ooa){
                         headers[src][options.headers].forEach(function(header){
                             if(header !== false){
-                            ooa[header] = [];
+                                ooa[header] = [];
                             }
                         });
                         if(options.latlng){
