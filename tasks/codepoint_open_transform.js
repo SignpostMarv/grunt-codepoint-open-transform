@@ -14,6 +14,8 @@ module.exports = function(grunt){
         'Transforms the Ordnance Survey "Code-Point Open" data.',
         function(){
             var
+                i = 0|0,
+                j = 0|0,
                 chunk = 1024|0,
                 done = this.async(),
                 options = this.options({
@@ -61,6 +63,7 @@ module.exports = function(grunt){
                     generate_json_ooa = false,
                     generate_json_aoo = false,
                     generate_sql_sqlite = false,
+                    generate_sql_sql = false,
                     last
                 ;
                 if(/\.ooa\.json$/.test(f.dest) || /^ooa\.json$/.test(f.dest)){
@@ -72,9 +75,12 @@ module.exports = function(grunt){
                     generate_json_aoo = true;
                 }else if(/\.sqlite$/.test(f.dest)){
                     generate_sql_sqlite = true;
+                }else if(/\.sql$/.test(f.dest)){
+                    generate_sql_sql = true;
                 }
 
                 if(
+                    generate_sql_sql === false &&
                     generate_sql_sqlite === false &&
                     generate_json_ooa === false &&
                     generate_json_aoo === false
@@ -150,6 +156,7 @@ module.exports = function(grunt){
                 }
 
                 if(
+                    generate_sql_sql ||
                     generate_sql_sqlite ||
                     generate_json_ooa ||
                     generate_json_aoo
@@ -198,6 +205,7 @@ module.exports = function(grunt){
                     ;
                     if(
                         generate_json_ooa ||
+                        generate_sql_sql ||
                         generate_sql_sqlite
                     ){
                         headers[src][options.headers].forEach(function(header){
@@ -207,6 +215,7 @@ module.exports = function(grunt){
                         });
                     }
                     if(
+                        generate_sql_sql ||
                         generate_sql_sqlite ||
                         generate_json_ooa
                     ){
@@ -295,6 +304,7 @@ module.exports = function(grunt){
                             record = []
                         ;
                         if(
+                            generate_sql_sql ||
                             generate_sql_sqlite ||
                             generate_json_ooa
                         ){
@@ -386,10 +396,7 @@ module.exports = function(grunt){
                         }else{
                             fs.writeFileSync(f.dest, '[');
                         }
-                        var
-                            i = 0|0,
-                            j = aoo.length - (aoo.length % chunk)
-                        ;
+                        j = aoo.length - (aoo.length % chunk);
                         for(i=0;i<aoo.length;i+=chunk){
                             fs.appendFileSync(
                                 f.dest,
@@ -411,16 +418,25 @@ module.exports = function(grunt){
                         }
                         fs.appendFileSync(f.dest, ']');
                         done();
-                    }else if(generate_sql_sqlite){
+                    }else if(
+                        generate_sql_sqlite ||
+                        generate_sql_sql
+                    ){
+                        if(generate_sql_sqlite){
                         grunt.log.writeln("Setting up SQLITE for " + f.dest);
                         fs.writeFileSync(f.dest, '');
+                        }
                         // assumes minimal mode, i.e. won't include all cols
                         var
                             sql = module.require('sql'),
                             SQLiteDialect = module.require(
                                 'sql/lib/dialect/sqlite'
                             ),
+                            MySQLDialect = module.require(
+                                'sql/lib/dialect/mysql'
+                            ),
                             sqlite = new SQLiteDialect(),
+                            mysql = new MySQLDialect(),
                             db,
                             makeDb = function(){
                                 db = (
@@ -502,6 +518,13 @@ module.exports = function(grunt){
                                     return insertSpec[col][j];
                                 };
                             },
+                            make_mysqlLoop = function(j){
+                                return function(col){
+                                    insertRow[col] =
+                                        insertSpec[col](j)
+                                    ;
+                                };
+                            },
                             stmt
                         ;
                         chunk = 128;
@@ -556,6 +579,9 @@ module.exports = function(grunt){
                                 };
                             }
                         }
+                        if(generate_sql_sql){
+                            schema.columns[0].dataType = 'varchar(16)';
+                        }
                         destTable = sql.define(schema);
                         Object.keys(insertSpec).forEach(
                             function(col){
@@ -565,6 +591,57 @@ module.exports = function(grunt){
                             }
                         );
 
+                        if(generate_sql_sql){
+                            grunt.log.writeln(
+                                'Writing SQL statements to ' + f.dest
+                            );
+                            fs.writeFileSync(
+                                f.dest,
+                                (
+                                    mysql.getQuery(destTable.create()).text +
+                                    ';' +
+                                    "\n"
+                                )
+                            );
+                            for(i=0;i<total;i+=chunk){
+                                if(i % (chunk * 128) === 0){
+                                    grunt.log.writeln(
+                                        (
+                                            Math.floor(
+                                                ((i + 1) / total) * 10000
+                                            ) / 100
+                                        ) + '%'
+                                    );
+                                }
+                                stmtInsertChunk = [];
+                                for(j=i;j<Math.min(total, i + chunk);++j){
+                                    insertRow = {};
+                                    Object.keys(insertSpec).forEach(
+                                        make_mysqlLoop(j)
+                                    );
+                                    stmtParams.concat(
+                                        Object.keys(insertSpec).map(
+                                            make_sqliteFlattener(j)
+                                        )
+                                    );
+                                    stmtInsertChunk.push(insertRow);
+                                }
+                                fs.appendFileSync(
+                                    f.dest,
+                                    (
+                                        (
+                                            mysql.getString(destTable.insert(
+                                                stmtInsertChunk
+                                            ))
+                                        ) +
+                                        ';' +
+                                        "\n"
+                                    )
+                                );
+                            }
+                            done();
+                            return;
+                        }else if(generate_sql_sqlite){
                         makeDb();
 
                         db.serialize(function(){
@@ -630,6 +707,7 @@ module.exports = function(grunt){
                                 });
                             });
                         });
+                        }
                     }
                 }
             });

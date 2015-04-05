@@ -106,6 +106,9 @@ Destinations ending in *aoo.json* will output JSON along the following form:
 #### SQLite
 Destinations ending in *.sqlite* will output SQLite databases.
 
+#### SQL
+Destinations ending in *.sql* will output SQL scripts.
+
 ### Usage Example
 ```js
 grunt.initConfig({
@@ -123,6 +126,9 @@ grunt.initConfig({
 In lieu of a formal styleguide, take care to maintain the existing coding style. Add unit tests for any new or changed functionality. Lint and test your code using [Grunt](http://gruntjs.com/).
 
 ## Release History
+
+### 0.3.0
+1) SQL Support
 
 ### 0.2.0
 1) SQLite Support
