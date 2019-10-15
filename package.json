@@ -37,7 +37,7 @@
     "postcodes"
   ],
   "dependencies": {
-    "csv-parse": "^0.1.0",
+    "csv-parse": "^4.6.3",
     "geodesy": "^1.0.1",
     "zipfile": "^0.5.7"
   }
